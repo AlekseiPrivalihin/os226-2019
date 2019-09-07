@@ -4,4 +4,4 @@
 
 #make
 
-cmpout test/1 main.sh
+cmpout test/1 ./main.sh
