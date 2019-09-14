@@ -25,16 +25,21 @@ void os_sigHandle(int sig, siginfo_t *info, void *ctx) {
 	} else if (cmd == 0x538b) {
 		index = ((*(uint32_t *) uc->uc_mcontext.gregs[REG_RIP]) & 0x00ff0000) >> 18;
 		stepRIP = 3;
+		caught = true;
 	} else if (cmd == 0x4d8b || cmd == 0x558b) {
 		index = (((*(uint32_t *) uc->uc_mcontext.gregs[REG_RIP]) & 0x00ff0000) >> 18) \
 			+ (((int)uc->uc_mcontext.gregs[REG_RBP] - baseFrame) >> 2);
 		stepRIP = 3;
-	} else {
-		return;
+		caught = true;
+	} 
+	
+	if (cmd == 0x0b8b || cmd == 0x54d8b) {
+		uc->uc_mcontext.gregs[REG_RCX] = result + 1000 * index;
+		uc->uc_mcontext.gregs[REG_RIP] += stepRIP;
+	} else if (cmd == 0x138b || cmd == 0x538b || cmd == 0x558b) {
+		uc->uc_mcontext.gregs[REG_RDX] = result + 1000 * index;
+		uc->uc_mcontext.gregs[REG_RIP] += stepRIP;
 	}
-
-	uc->uc_mcontext.gregs[REG_RAX] = result + 1000 * index;
-	uc->uc_mcontext.gregs[REG_RIP] += stepRIP;
 }
 
 void init(void *base) {
