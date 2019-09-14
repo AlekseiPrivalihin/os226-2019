@@ -31,7 +31,7 @@ void os_sigHandle(int sig, siginfo_t *info, void *ctx) {
 		stepRIP = 3;
 	} 
 	
-	if (cmd == 0x0b8b || cmd == 0x54d8b) {
+	if (cmd == 0x0b8b || cmd == 0x4d8b) {
 		uc->uc_mcontext.gregs[REG_RCX] = result + 1000 * index;
 		uc->uc_mcontext.gregs[REG_RIP] += stepRIP;
 	} else if (cmd == 0x138b || cmd == 0x538b || cmd == 0x558b) {
