@@ -76,7 +76,6 @@ void sched_new(void (*entrypoint)(void *aspace),
 		void *aspace,
 	       	int priority,
 		int deadline) {
-<<<<<<< HEAD
 	unsigned id = newId++;
 	tasks[id].ord = currentOrd++;
 	tasks[id].entrypoint = entrypoint;
