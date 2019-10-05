@@ -1,137 +1,136 @@
-#include <limits.h>
-#include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "sched.h"
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+enum Policy{FIFO, PRIORITY, DEADLINE} policy;
 
-struct task {
-	void (*entry)(void *as);
-	void *as;
-	int priority;
-	int deadline;
-
-	// timeout support
-	int waketime;
-
-	// policy support
-	struct task *next;
+struct Task {
+	void (*entrypoint)(void *aspace);
+	void *aspace;
+	unsigned id;
+	unsigned ord;
+	unsigned priority;
+	unsigned deadline;
+	unsigned endlockTime;
+	struct Task *nextTask;
 };
 
-static int time;
+struct Task *nextTask = NULL;
+struct Task tasks[1000];
+unsigned time = 0;
+unsigned currentId = -1;
+unsigned currentOrd = 0;
+unsigned newId = 0;
 
-static struct task *current;
-static struct task *runq;
-static struct task *waitq;
+int cmp(struct Task *a, struct Task *b) {
+	switch(policy) {
+		case FIFO:
+			return a->ord <= b->ord;
+		case PRIORITY:
+			return (a->priority < b->priority) || ((a->priority == b->priority) && (a->ord <= b->ord));
+		case DEADLINE:
+			if (a->deadline == -1) {
+				if (b->deadline == -1) {
+					return 1;
+				} else {
+					return 0;
+				}
+			} 
+			
+			if (b->deadline == -1) {
+				return 1;
+			}
 
-static int (*policy_cmp)(struct task *t1, struct task *t2);
+			if (a->deadline == b->deadline) {
+				if (a->endlockTime == b->endlockTime) {
+					return (a->priority < b->priority) || ((a->priority == b->priority) && (a->ord <= b->ord));
+				}
 
-static struct task taskpool[16];
-static int taskpool_n;
+				return a->endlockTime < b->endlockTime;
+			}
 
-static void policy_run(struct task *t) {
-	struct task **c = &runq;
-
-	while (*c && policy_cmp(*c, t) <= 0) {
-		c = &(*c)->next;
+			return a->deadline <= b->deadline;
 	}
-	t->next = *c;
-	*c = t;
+}
+
+void queue(struct Task *newTask) { 
+	if (nextTask == NULL || !cmp(nextTask, newTask)) {
+		newTask->nextTask = nextTask;
+		nextTask = newTask;
+		return;
+	}
+
+	struct Task *parent = nextTask;
+
+	while (parent->nextTask != NULL && cmp(parent->nextTask, newTask)) {
+		parent = parent->nextTask;
+	}
+	
+	newTask->nextTask = parent->nextTask;
+	parent->nextTask = newTask;
 }
 
 void sched_new(void (*entrypoint)(void *aspace),
 		void *aspace,
 	       	int priority,
 		int deadline) {
+<<<<<<< HEAD
+	unsigned id = newId++;
+	tasks[id].ord = currentOrd++;
+	tasks[id].entrypoint = entrypoint;
+	tasks[id].id = id;
+	tasks[id].aspace = aspace;
+	tasks[id].priority = priority;
+	tasks[id].deadline = deadline;
+	tasks[id].endlockTime = 0;
 
-	if (ARRAY_SIZE(taskpool) <= taskpool_n) {
-		fprintf(stderr, "No mem for new task\n");
-		return;
-	}
-	struct task *t = &taskpool[taskpool_n++];
-
-	t->entry = entrypoint;
-	t->as = aspace;
-	t->priority = priority;
-	t->deadline = 0 <= deadline ? deadline : INT_MAX;
-
-	policy_run(t);
+	queue(&tasks[id]);
 }
 
 void sched_cont(void (*entrypoint)(void *aspace),
 		void *aspace,
 		int timeout) {
-
-	if (current->next != current) {
-		fprintf(stderr, "Mulitiple sched_cont\n");
+	if (currentId == -1) {
+		printf("Illegal sched_cont!");
 		return;
 	}
-
-	if (!timeout) {
-		policy_run(current);
-		return;
+	else {
+		tasks[currentId].endlockTime = time + timeout;
+		tasks[currentId].ord = currentOrd++;
+		queue(&tasks[currentId]);
+		currentId = -1;
 	}
-
-	current->waketime = time + timeout;
-
-	struct task **c = &waitq;
-	while (*c && (*c)->waketime < current->waketime) {
-		c = &(*c)->next;
-	}
-	current->next = *c;
-	*c = current;
 }
 
 void sched_time_elapsed(unsigned amount) {
 	time += amount;
-
-	while (waitq && waitq->waketime <= time) {
-		struct task *t = waitq;
-		waitq = waitq->next;
-		policy_run(t);
-	}
-}
-
-static int fifo_cmp(struct task *t1, struct task *t2) {
-	return -1;
-}
-
-static int prio_cmp(struct task *t1, struct task *t2) {
-	return t1->priority - t2->priority;
-}
-
-static int deadline_cmp(struct task *t1, struct task *t2) {
-	int d = t1->deadline - t2->deadline;
-	if (d) {
-		return d;
-	}
-	return prio_cmp(t1, t2);
 }
 
 void sched_set_policy(const char *name) {
-	if (!strcmp(name, "fifo")) {
-		policy_cmp = fifo_cmp;
-	} else if (!strcmp(name, "priority")) {
-		policy_cmp = prio_cmp;
-	} else if (!strcmp(name, "deadline")) {
-		policy_cmp = deadline_cmp;
-	} else {
-		fprintf(stderr, "Unknown policy: %s\n", name);
+	if (!strcmp(name, "fifo"))
+		policy = FIFO;
+	else if (!strcmp(name, "priority"))
+		policy = PRIORITY;
+	else if (!strcmp(name, "deadline"))
+		policy = DEADLINE;
+	else {
+		printf("Wrong policy\n");
+		exit(1);
 	}
 }
 
 void sched_run(void) {
-	if (!policy_cmp) {
-		fprintf(stderr, "Policy unset\n");
-		return;
-	}
-
-	while (runq) {
-		current = runq;
-		runq = current->next;
-		current->next = current;
-
-		current->entry(current->as);
+	while(nextTask != NULL) {
+		if (nextTask->endlockTime < time) {
+			struct Task *toExecute = nextTask;
+			nextTask = nextTask->nextTask;
+			currentId = toExecute->id;
+			void (*run_app)(void *) = toExecute->entrypoint;
+        		run_app(toExecute->aspace);
+		} else {
+			sched_time_elapsed(1);
+		}
 	}
 }
