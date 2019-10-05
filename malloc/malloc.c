@@ -3,10 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include<string.h>
 
 #define CONCAT(...) __VA_ARGS__
 
-#if 0
+#if 1
 #define FNX(_ret, _name, _decl, _call, ...) \
 	static _ret (*_name ## _p)(_decl); \
 	void _name ## _init(void) __attribute__((constructor)); \
@@ -16,14 +17,20 @@
 	} \
         _ret _name (_decl) { \
 		__VA_ARGS__ \
-                return _name ## _p(_call); \
         }
+
+char mem[1000000];
+char *memPtr = mem;
+void init(void) __attribute__((constructor));
 
 FNX(void *, malloc,
 		size_t size,
 		size,
 {
-	fprintf(stderr, "%s size %u\n", __func__, size);
+	fprintf(stderr, "%s size %lu\n", __func__, size);
+	char *oldPtr = memPtr;
+	memPtr += size;
+	return oldPtr;
 })
 
 FNX(void, free,
@@ -37,21 +44,40 @@ FNX(void *, calloc,
 		CONCAT(size_t nmemb, size_t size),
 		CONCAT(nmemb, size),
 {
-	fprintf(stderr, "%s nmemb %u size %u\n", __func__, nmemb, size);
+	fprintf(stderr, "%s nmemb %lu size %lu\n", __func__, nmemb, size);
+	char *oldPtr = memPtr;
+	memPtr += size * nmemb;
+	return oldPtr;
 })
 
 FNX(void *, realloc,
 		CONCAT(void *ptr, size_t size),
 		CONCAT(ptr, size),
 {
-	fprintf(stderr, "%s ptr %p size %u\n", __func__, ptr, size);
+	fprintf(stderr, "%s ptr %p size %lu\n", __func__, ptr, size);
+	if (size == 0)
+		return NULL;
+	if (ptr == NULL) 
+		return malloc(size);
+	memcpy(memPtr, ptr, size);
+	char *oldPtr = memPtr;
+	memPtr += size;
+	return oldPtr; 
 })
 
 FNX(void *, reallocarray,
 		CONCAT(void *ptr, size_t nmemb, size_t size),
 		CONCAT(ptr, nmemb, size),
 {
-	fprintf(stderr, "%s ptr %p nmemb %u size %u\n", __func__, ptr, nmemb, size);
+	fprintf(stderr, "%s ptr %p nmemb %lu size %lu\n", __func__, ptr, nmemb, size);
+	if (size == 0)
+		return NULL;
+	if (ptr == NULL) 
+		return malloc(size * nmemb);
+	memcpy(memPtr, ptr, size * nmemb);
+	char *oldPtr = memPtr;
+	memPtr += size * nmemb;
+	return oldPtr; 
 })
 
 #else
